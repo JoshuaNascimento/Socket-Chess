@@ -4,6 +4,7 @@ import { Chessboard } from 'react-chessboard';
 import { Chess } from 'chess.js';
 import CustomDialog from './components/CustomDialog';
 import socket from './socket';
+import { Card, CardContent, List, ListItem, ListItemText, Stack, Typography, Box, ListSubheader} from "@mui/material";
 
 export default function Game({ room, orientation, username, players, cleanup }) {
   // Create a memoized chess instance with 0 dependencies
@@ -16,7 +17,17 @@ export default function Game({ room, orientation, username, players, cleanup }) 
     socket.on('recieveMove', (moveData) => {
       makeAMove(moveData) // Validate the incoming move on the recieving players side as well
     })
-  }, [])
+
+    socket.on('opponentDisconnected', (player) => {
+      setOver(`${player.username} has lost connection`)
+    })
+
+    socket.on('closeRoom', ({ roomID }) => {
+      if (roomID === room) {  // Check if current room matches room being closed
+        cleanup();  // True; reset game state
+      }
+    })
+  }, [room, cleanup])
 
   // useCallback caches the function between re-renders to prevent the function from getting called on every re-render
   const makeAMove = useCallback(
@@ -67,19 +78,45 @@ export default function Game({ room, orientation, username, players, cleanup }) 
 
   return (
   <>
-    <div className='gameBoard'>
-      
-      <Chessboard position={fen} boardOrientation={orientation} onPieceDrop={onDrop}/> {/* Create Chessboard via react-chessboard with initial position given by fen */}
-    </div>
+  <Stack>
+    <Card>
+      <CardContent>
+        <Typography variant="h5"> Room ID: {room} </Typography>
+      </CardContent>
+    </Card>
+    <Stack flexDirection="row" sx={{ pt: 2 }}>
+      <div className="board" style={{
+        maxWidth: 600,
+        maxHeight: 600,
+        flexGrow: 1,
+      }}>
+        <Chessboard position={fen} boardOrientation={orientation} onPieceDrop={onDrop}/> {/* Create Chessboard via react-chessboard with initial position given by fen */}
+      </div>
+      {players?.length > 0 && (
+        <Box>
+          <List>
+            <ListSubheader>Players</ListSubheader>
+            {players.map( player => (
+              <ListItem key={player}>
+                <ListItemText primary={player.username}/>
+              </ListItem>
+            ))}
+          </List>
+        </Box>
+      )}
+    </Stack>
     { /* Render Dialog when 'over' state is true, describing the reason the game is over */ }
     <CustomDialog 
       open={Boolean(over)} 
       title={over}
       contentText={over}
       handleContinue={() => {
+        socket.emit('closeRoom', { roomID: room }); // Emit event to backend signalling server to close room
+        cleanup();  // Reset frontend state to defaults
         setOver("");
       }} 
     />
+  </Stack>
   </>
   )
 }
